@@ -56,6 +56,7 @@ FIRESTORE_EMULATOR_HOST="127.0.0.1:8085" node --test firestore.test.js
 # Run Android Kotlin unit, Compose UI & Firestore Rule tests
 FIRESTORE_EMULATOR_HOST="127.0.0.1:8085" gradle :app:testDebugUnitTest
 ```
+##run it for publish and run app now 
 
 ## Creator & Platform Contact
 - **Email**: allengrogan33@gmail.com

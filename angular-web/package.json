@@ -39,3 +39,4 @@
     "typescript": "~6.0.0"
   }
 }
+"build:pages": "ng build --configuration production --base-href /StagesOfLife/"

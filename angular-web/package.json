@@ -38,5 +38,3 @@
     "karma-jasmine-html-reporter": "^2.1.0",
     "typescript": "~6.0.0"
   }
-}
-"build:pages": "ng build --configuration production --base-href /StagesOfLife/"

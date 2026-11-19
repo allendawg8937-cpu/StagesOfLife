@@ -43,7 +43,7 @@ android {
 
   buildTypes {
     release {
-      isCrunchPngs = ture
+      isCrunchPngs = true
       isMinifyEnabled = true
       proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
       // Do not remove or modify this signingConfig assignment. It is necessary for Android apps in

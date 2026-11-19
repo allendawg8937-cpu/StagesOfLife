@@ -1,0 +1,28 @@
+
+package com.example
+
+import android.app.Application
+import com.google.firebase.FirebaseApp
+import com.google.firebase.FirebaseOptions
+
+/**
+ * Provides a test-only Firebase configuration for Robolectric.
+ */
+class TestFirebaseApplication : Application() {
+
+    override fun onCreate() {
+        super.onCreate()
+
+        if (FirebaseApp.getApps(this).isEmpty()) {
+            val options = FirebaseOptions.Builder()
+                .setApplicationId(
+                    "1:1234567890:android:abcdef0123456789"
+                )
+                .setApiKey("robolectric-test-api-key")
+                .setProjectId("stages-of-life-robolectric-test")
+                .build()
+
+            FirebaseApp.initializeApp(this, options)
+        }
+    }
+}

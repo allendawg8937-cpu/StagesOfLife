@@ -38,6 +38,7 @@ class ExampleRobolectricTest {
 
     @Test
     fun `mainActivity launches cleanly renders unified header and enters dashboard`() {
+
         composeTestRule
             .onNodeWithTag("unified_search_and_theme_header_bar")
             .assertIsDisplayed()

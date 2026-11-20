@@ -5,13 +5,15 @@ on:
   push:
     branches:
       - main
+    tags:
+      - 'v*'
   pull_request:
     branches:
       - main
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
   group: android-ci-${{ github.workflow }}-${{ github.ref }}
@@ -19,26 +21,27 @@ concurrency:
 
 jobs:
   build-and-test:
-    name: Build and test Android app
+    name: Build and Publish Android APK
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 60
 
     steps:
-      - name: Check out repository
+      - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Set up Java
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '21'
+          cache: gradle
 
-      - name: Set up Gradle
+      - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '9.3.1'
 
-      - name: Set up Node.js
+      - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: '22'
@@ -46,26 +49,38 @@ jobs:
       - name: Install Firebase CLI
         run: npm install --global firebase-tools
 
-      - name: Check Firebase configuration
+      - name: Verify Firebase Files
         run: |
           test -f firebase.json
           test -f firestore.rules
 
-      - name: Run unit tests with Firebase emulators
+      - name: Build Android APK
+        run: gradle :app:assembleDebug
+
+      - name: Verify APK
+        run: |
+          test -s app/build/outputs/apk/debug/app-debug.apk
+          ls -lh app/build/outputs/apk/debug/app-debug.apk
+
+      - name: Upload Downloadable APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: stages-of-life-debug-apk
+          path: app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Run Android Tests
         run: |
           firebase emulators:exec \
             --only auth,firestore \
             --project demo-no-project \
             "gradle :app:testDebugUnitTest"
 
-      - name: Build debug APK
-        run: gradle :app:assembleDebug
-
-      - name: Upload debug APK
-        if: success()
-        uses: actions/upload-artifact@v4
+      - name: Publish APK to GitHub Release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
         with:
-          name: stages-of-life-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
-          if-no-files-found: error
-          retention-days: 14
+          files: app/build/outputs/apk/debug/app-debug.apk
+          fail_on_unmatched_files: true
+          generate_release_notes: true

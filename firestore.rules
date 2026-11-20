@@ -1,377 +1,938 @@
+
 rules_version = '2';
+
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Helper functions
+
+    // =========================================
+    // GENERAL SECURITY HELPERS
+    // =========================================
+
     function isSignedIn() {
       return request.auth != null;
     }
-    
+
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
-    
-    function isValidTimestamp(ts) {
-      return ts is timestamp;
+
+    function isValidTimestamp(value) {
+      return value is timestamp;
     }
 
-    function isValidId(id) {
-      return id is string && id.size() >= 1 && id.size() <= 100 && !id.matches('.*[/\\\\].*');
+    function isValidId(value) {
+      return value is string
+        && value.size() >= 1
+        && value.size() <= 100
+        && !value.matches('.*[/\\\\].*');
     }
 
-    // --- Users Collection ---
+    function isValidHexColor(value) {
+      return value is string
+        && value.size() >= 7
+        && value.size() <= 9
+        && value.matches('^#[0-9a-fA-F]{6,8}$');
+    }
+
+    // =========================================
+    // USERS
+    // =========================================
+
     match /users/{userId} {
-      allow read: if isSignedIn(); // Allow reading profiles for community features
-      allow create: if isOwner(userId) && isValidUser(request.resource.data);
-      allow update: if isOwner(userId) && isValidUser(request.resource.data);
-      allow delete: if isOwner(userId); // Owner can permanently delete their account
+
+      // User account documents contain private information.
+      // Public profile discovery should use a separate public document.
+      allow get, list: if isOwner(userId);
+
+      allow create: if isOwner(userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.createdAt <= request.time
+        && request.resource.data.updatedAt <= request.time;
+
+      // Sensitive account fields cannot be changed by clients:
+      // role, balances, pledge status, badges and owned items.
+      allow update: if isOwner(userId)
+        && isValidUser(request.resource.data)
+        && request.resource.data.userId == resource.data.userId
+        && request.resource.data.role == resource.data.role
+        && request.resource.data.email == resource.data.email
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.savingsBalanceCents == resource.data.savingsBalanceCents
+        && request.resource.data.virtualCurrencyBalance == resource.data.virtualCurrencyBalance
+        && request.resource.data.earnedBadges == resource.data.earnedBadges
+        && request.resource.data.ownedVirtualItems == resource.data.ownedVirtualItems
+        && request.resource.data.pledgeAccepted == resource.data.pledgeAccepted
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+          'displayName',
+          'age',
+          'location',
+          'bio',
+          'profilePictureUrl',
+          'themeColorHex',
+          'themeVisualStyle',
+          'isDarkMode',
+          'musicTrackTitle',
+          'musicPlatform',
+          'savingsGoalCents',
+          'arcadeHighScore',
+          'phoneNumber',
+          'interests',
+          'spotifyConnected',
+          'spotifyUserId',
+          'appleMusicConnected',
+          'appleMusicStorefront',
+          'updatedAt'
+        ])
+        && request.resource.data.updatedAt <= request.time;
+
+      allow delete: if isOwner(userId);
 
       function isValidUser(data) {
         return data.keys().hasOnly([
-            'userId', 'displayName', 'email', 'role', 'age', 'location', 'bio',
-            'profilePictureUrl', 'themeColorHex', 'themeVisualStyle', 'isDarkMode', 'musicTrackTitle',
-            'musicPlatform', 'savingsBalanceCents', 'savingsGoalCents', 'arcadeHighScore',
-            'pledgeAccepted', 'phoneNumber', 'interests', 'spotifyConnected',
-            'spotifyUserId', 'appleMusicConnected', 'appleMusicStorefront',
-            'virtualCurrencyBalance', 'earnedBadges', 'ownedVirtualItems',
-            'createdAt', 'updatedAt'
-          ])
-          && data.userId == request.auth.uid
-          && data.displayName is string && data.displayName.size() <= 60
-          && data.role in ['veteran', 'business', 'creator', 'adult', 'student', 'kid', 'teen']
-          && data.age is int && data.age >= 13 && data.age <= 120
-          && data.location is string && data.location.size() <= 80
-          && data.bio is string && data.bio.size() <= 300
-          && (!('profilePictureUrl' in data) || (data.profilePictureUrl is string && data.profilePictureUrl.size() <= 500))
-          && data.themeColorHex is string && data.themeColorHex.size() <= 9
-          && data.themeVisualStyle is string && data.themeVisualStyle.size() <= 40
-          && data.isDarkMode is bool
-          && data.musicTrackTitle is string && data.musicTrackTitle.size() <= 120
-          && data.musicPlatform is string && data.musicPlatform.size() <= 40
-          && data.savingsBalanceCents is int && data.savingsBalanceCents >= 0
-          && data.savingsGoalCents is int && data.savingsGoalCents >= 0
-          && data.arcadeHighScore is int && data.arcadeHighScore >= 0
-          && data.pledgeAccepted == true
-          && data.phoneNumber is string && data.phoneNumber.size() <= 20
-          && data.interests is list
-          && (request.method == 'create' ? isValidTimestamp(data.createdAt) : true)
-          && isValidTimestamp(data.updatedAt);
+          'userId',
+          'displayName',
+          'email',
+          'role',
+          'age',
+          'location',
+          'bio',
+          'profilePictureUrl',
+          'themeColorHex',
+          'themeVisualStyle',
+          'isDarkMode',
+          'musicTrackTitle',
+          'musicPlatform',
+          'savingsBalanceCents',
+          'savingsGoalCents',
+          'arcadeHighScore',
+          'pledgeAccepted',
+          'phoneNumber',
+          'interests',
+          'spotifyConnected',
+          'spotifyUserId',
+          'appleMusicConnected',
+          'appleMusicStorefront',
+          'virtualCurrencyBalance',
+          'earnedBadges',
+          'ownedVirtualItems',
+          'createdAt',
+          'updatedAt'
+        ])
+        && data.userId == request.auth.uid
+        && data.displayName is string
+        && data.displayName.size() <= 60
+        && data.email is string
+        && data.email.size() <= 254
+        && data.role in [
+          'veteran',
+          'business',
+          'creator',
+          'adult',
+          'student',
+          'kid',
+          'teen'
+        ]
+        && data.age is int
+        && data.age >= 13
+        && data.age <= 120
+        && data.location is string
+        && data.location.size() <= 80
+        && data.bio is string
+        && data.bio.size() <= 300
+        && (!('profilePictureUrl' in data)
+          || (data.profilePictureUrl is string
+            && data.profilePictureUrl.size() <= 500))
+        && isValidHexColor(data.themeColorHex)
+        && data.themeVisualStyle is string
+        && data.themeVisualStyle.size() <= 40
+        && data.isDarkMode is bool
+        && data.musicTrackTitle is string
+        && data.musicTrackTitle.size() <= 120
+        && data.musicPlatform is string
+        && data.musicPlatform.size() <= 40
+        && data.savingsBalanceCents is int
+        && data.savingsBalanceCents >= 0
+        && data.savingsGoalCents is int
+        && data.savingsGoalCents >= 0
+        && data.arcadeHighScore is int
+        && data.arcadeHighScore >= 0
+        && data.pledgeAccepted == true
+        && data.phoneNumber is string
+        && data.phoneNumber.size() <= 20
+        && data.interests is list
+        && data.virtualCurrencyBalance is int
+        && data.virtualCurrencyBalance >= 0
+        && data.earnedBadges is list
+        && data.ownedVirtualItems is list
+        && data.createdAt is timestamp
+        && data.updatedAt is timestamp;
       }
+
+      // =======================================
+      // FRIENDS
+      // =======================================
 
       match /friends/{friendId} {
         allow read: if isOwner(userId);
-        allow create, update: if isOwner(userId) && isValidFriend(request.resource.data);
+
+        allow create: if isOwner(userId)
+          && isValidFriend(request.resource.data)
+          && request.resource.data.friendUserId != userId
+          && request.resource.data.createdAt <= request.time;
+
+        allow update: if false;
+
         allow delete: if isOwner(userId);
 
         function isValidFriend(data) {
-          return data.friendUserId is string && data.displayName is string
-            && data.avatarEmoji is string && data.role is string
-            && isValidTimestamp(data.createdAt);
+          return data.keys().hasOnly([
+            'friendUserId',
+            'displayName',
+            'avatarEmoji',
+            'role',
+            'createdAt'
+          ])
+          && data.friendUserId is string
+          && data.displayName is string
+          && data.displayName.size() <= 60
+          && data.avatarEmoji is string
+          && data.role is string
+          && data.createdAt is timestamp;
         }
       }
 
-      // --- Subcollections ---
+      // =======================================
+      // POSTS
+      // =======================================
 
       match /posts/{postId} {
-        allow read: if isSignedIn(); // Wall posts are public to all users
-        allow create: if isOwner(userId) && isValidPost(request.resource.data);
-        allow update: if isOwner(userId) && isValidPost(request.resource.data);
+        allow read: if isSignedIn();
+
+        allow create: if isOwner(userId)
+          && isValidPost(request.resource.data)
+          && request.resource.data.createdAt <= request.time
+          && request.resource.data.updatedAt <= request.time;
+
+        allow update: if isOwner(userId)
+          && isValidPost(request.resource.data)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.likesCount == resource.data.likesCount
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'title',
+              'content',
+              'category',
+              'accentHex',
+              'updatedAt'
+            ])
+          && request.resource.data.updatedAt <= request.time;
+
         allow delete: if isOwner(userId);
 
         function isValidPost(data) {
           return data.userId == request.auth.uid
-            && data.authorName is string && data.authorName.size() <= 60
-            && data.authorRole is string && data.authorRole.size() <= 30
-            && data.category in ['Update', 'Resource Guide', 'Studio Art', 'Milestone']
-            && data.title is string && data.title.size() <= 100
-            && data.content is string && data.content.size() <= 1000
-            && data.likesCount is int && data.likesCount >= 0
-            && data.accentHex is string && data.accentHex.size() <= 9
-            && (request.method == 'create' ? isValidTimestamp(data.createdAt) : true)
-            && isValidTimestamp(data.updatedAt);
+            && data.authorName is string
+            && data.authorName.size() <= 60
+            && data.authorRole is string
+            && data.authorRole.size() <= 30
+            && data.category in [
+              'Update',
+              'Resource Guide',
+              'Studio Art',
+              'Milestone'
+            ]
+            && data.title is string
+            && data.title.size() <= 100
+            && data.content is string
+            && data.content.size() <= 1000
+            && data.likesCount is int
+            && data.likesCount >= 0
+            && isValidHexColor(data.accentHex)
+            && data.createdAt is timestamp
+            && data.updatedAt is timestamp;
         }
       }
 
+      // =======================================
+      // BUDGET ENTRIES
+      // =======================================
+
       match /budget_entries/{entryId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isValidBudgetEntry(request.resource.data)
+          && request.resource.data.createdAt <= request.time;
+
+        allow update: if isOwner(userId)
+          && isValidBudgetEntry(request.resource.data)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.createdAt == resource.data.createdAt;
+
+        allow delete: if isOwner(userId);
 
         function isValidBudgetEntry(data) {
           return data.userId == request.auth.uid
-            && data.title is string && data.title.size() <= 80
+            && data.title is string
+            && data.title.size() <= 80
             && data.category in ['Save', 'Spend', 'Give', 'Goal']
-            && data.amountCents is int && data.amountCents > 0
-            && isValidTimestamp(data.createdAt);
+            && data.amountCents is int
+            && data.amountCents > 0
+            && data.createdAt is timestamp;
         }
       }
 
+      // =======================================
+      // INTERACTIONS
+      // =======================================
+
       match /interactions/{interactionId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isValidInteraction(request.resource.data)
+          && request.resource.data.createdAt <= request.time;
+
+        allow update: if false;
+
+        allow delete: if isOwner(userId);
 
         function isValidInteraction(data) {
           return data.userId == request.auth.uid
-            && data.actionType is string && data.actionType.size() <= 30
-            && data.detail is string && data.detail.size() <= 200
-            && data.category is string && data.category.size() <= 50
-            && isValidTimestamp(data.createdAt);
+            && data.actionType is string
+            && data.actionType.size() <= 30
+            && data.detail is string
+            && data.detail.size() <= 200
+            && data.category is string
+            && data.category.size() <= 50
+            && data.createdAt is timestamp;
         }
       }
 
+      // =======================================
+      // CAREER MILESTONES
+      // =======================================
+
       match /career_milestones/{milestoneId} {
-        allow read, write: if isOwner(userId);
+        allow read: if isOwner(userId);
+
+        allow create: if isOwner(userId)
+          && isValidMilestone(request.resource.data)
+          && request.resource.data.createdAt <= request.time
+          && request.resource.data.updatedAt <= request.time;
+
+        allow update: if isOwner(userId)
+          && isValidMilestone(request.resource.data)
+          && request.resource.data.userId == resource.data.userId
+          && request.resource.data.createdAt == resource.data.createdAt
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'title',
+              'stage',
+              'description',
+              'targetTerm',
+              'status',
+              'xpReward',
+              'stepOrder',
+              'portalUrl',
+              'updatedAt'
+            ])
+          && request.resource.data.updatedAt <= request.time;
+
+        allow delete: if isOwner(userId);
 
         function isValidMilestone(data) {
           return data.userId == request.auth.uid
-            && data.title is string && data.title.size() <= 120
-            && data.stage in ['Foundation', 'Academic', 'Application', 'Internship', 'Career Launch']
-            && data.description is string && data.description.size() <= 400
-            && data.targetTerm is string && data.targetTerm.size() <= 40
-            && data.status in ['Upcoming', 'In Progress', 'Completed']
-            && data.xpReward is int && data.xpReward >= 10
-            && data.stepOrder is int && data.stepOrder >= 1
-            && data.portalUrl is string && data.portalUrl.size() <= 300
-            && (request.method == 'create' ? isValidTimestamp(data.createdAt) : true)
-            && isValidTimestamp(data.updatedAt);
+            && data.title is string
+            && data.title.size() <= 120
+            && data.stage in [
+              'Foundation',
+              'Academic',
+              'Application',
+              'Internship',
+              'Career Launch'
+            ]
+            && data.description is string
+            && data.description.size() <= 400
+            && data.targetTerm is string
+            && data.targetTerm.size() <= 40
+            && data.status in [
+              'Upcoming',
+              'In Progress',
+              'Completed'
+            ]
+            && data.xpReward is int
+            && data.xpReward >= 10
+            && data.stepOrder is int
+            && data.stepOrder >= 1
+            && data.portalUrl is string
+            && data.portalUrl.size() <= 300
+            && data.createdAt is timestamp
+            && data.updatedAt is timestamp;
         }
       }
 
+      // =======================================
+      // 3D PROFILE CONFIGURATIONS
+      // =======================================
+
       match /profile_3d_configs/{configId} {
         allow get, list: if isOwner(userId);
+
         allow create: if isOwner(userId)
           && isValidId(configId)
           && isValidProfile3DConfig(request.resource.data)
-          && request.resource.data.createdAt is timestamp
-          && request.resource.data.createdAt <= request.time;
+          && request.resource.data.createdAt <= request.time
+          && request.resource.data.updatedAt <= request.time;
+
         allow update: if isOwner(userId)
           && isValidId(configId)
           && isValidProfile3DConfig(request.resource.data)
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'configName', 'baseModelId', 'baseModelName',
-            'primaryColorHex', 'secondaryColorHex', 'auraColorHex',
-            'headgearId', 'eyewearId', 'auraId', 'rigId',
-            'metallicFinish', 'scaleFactor', 'autoRotate', 'turntableYawDeg',
-            'isActive', 'updatedAt'
-          ]);
-        allow delete: if isOwner(userId) && isValidId(configId);
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'configName',
+              'baseModelId',
+              'baseModelName',
+              'primaryColorHex',
+              'secondaryColorHex',
+              'auraColorHex',
+              'headgearId',
+              'eyewearId',
+              'auraId',
+              'rigId',
+              'metallicFinish',
+              'scaleFactor',
+              'autoRotate',
+              'turntableYawDeg',
+              'isActive',
+              'updatedAt'
+            ]);
 
-        function isValidHexColor(hex) {
-          return hex is string && hex.size() >= 7 && hex.size() <= 9 && hex.matches('^#[0-9a-fA-F]{6,8}$');
-        }
+        allow delete: if isOwner(userId)
+          && isValidId(configId);
 
         function isValidProfile3DConfig(data) {
           return data.keys().hasOnly([
-              'userId', 'configName', 'baseModelId', 'baseModelName',
-              'primaryColorHex', 'secondaryColorHex', 'auraColorHex',
-              'headgearId', 'eyewearId', 'auraId', 'rigId',
-              'metallicFinish', 'scaleFactor', 'autoRotate', 'turntableYawDeg',
-              'isActive', 'createdAt', 'updatedAt'
-            ])
-            && data.userId == request.auth.uid
-            && data.configName is string && data.configName.size() >= 1 && data.configName.size() <= 60
-            && data.baseModelId in ['cyber_astronaut', 'holo_scholar', 'cosmic_pioneer', 'neon_tactician', 'eco_guardian', 'street_innovator']
-            && data.baseModelName is string && data.baseModelName.size() >= 1 && data.baseModelName.size() <= 60
-            && isValidHexColor(data.primaryColorHex)
-            && isValidHexColor(data.secondaryColorHex)
-            && isValidHexColor(data.auraColorHex)
-            && data.headgearId in ['head_none', 'head_crown', 'head_halo', 'head_headphones', 'head_helmet', 'head_beret']
-            && data.eyewearId in ['eye_none', 'eye_visor', 'eye_shades', 'eye_hud', 'eye_pixel']
-            && data.auraId in ['aura_none', 'aura_drones', 'aura_wings', 'aura_stars', 'aura_shield']
-            && data.rigId in ['rig_none', 'rig_pauldrons', 'rig_cape', 'rig_medallion', 'rig_collar']
-            && data.metallicFinish is number && data.metallicFinish >= 0.0 && data.metallicFinish <= 1.0
-            && data.scaleFactor is number && data.scaleFactor >= 0.6 && data.scaleFactor <= 1.5
-            && data.autoRotate is bool
-            && data.turntableYawDeg is number && data.turntableYawDeg >= -180.0 && data.turntableYawDeg <= 360.0
-            && data.isActive is bool
-            && isValidTimestamp(data.updatedAt)
-            && data.updatedAt <= request.time;
+            'userId',
+            'configName',
+            'baseModelId',
+            'baseModelName',
+            'primaryColorHex',
+            'secondaryColorHex',
+            'auraColorHex',
+            'headgearId',
+            'eyewearId',
+            'auraId',
+            'rigId',
+            'metallicFinish',
+            'scaleFactor',
+            'autoRotate',
+            'turntableYawDeg',
+            'isActive',
+            'createdAt',
+            'updatedAt'
+          ])
+          && data.userId == request.auth.uid
+          && data.configName is string
+          && data.configName.size() >= 1
+          && data.configName.size() <= 60
+          && data.baseModelId in [
+            'cyber_astronaut',
+            'holo_scholar',
+            'cosmic_pioneer',
+            'neon_tactician',
+            'eco_guardian',
+            'street_innovator'
+          ]
+          && data.baseModelName is string
+          && data.baseModelName.size() >= 1
+          && data.baseModelName.size() <= 60
+          && isValidHexColor(data.primaryColorHex)
+          && isValidHexColor(data.secondaryColorHex)
+          && isValidHexColor(data.auraColorHex)
+          && data.headgearId in [
+            'head_none',
+            'head_crown',
+            'head_halo',
+            'head_headphones',
+            'head_helmet',
+            'head_beret'
+          ]
+          && data.eyewearId in [
+            'eye_none',
+            'eye_visor',
+            'eye_shades',
+            'eye_hud',
+            'eye_pixel'
+          ]
+          && data.auraId in [
+            'aura_none',
+            'aura_drones',
+            'aura_wings',
+            'aura_stars',
+            'aura_shield'
+          ]
+          && data.rigId in [
+            'rig_none',
+            'rig_pauldrons',
+            'rig_cape',
+            'rig_medallion',
+            'rig_collar'
+          ]
+          && data.metallicFinish is number
+          && data.metallicFinish >= 0
+          && data.metallicFinish <= 1
+          && data.scaleFactor is number
+          && data.scaleFactor >= 0.6
+          && data.scaleFactor <= 1.5
+          && data.autoRotate is bool
+          && data.turntableYawDeg is number
+          && data.turntableYawDeg >= -180
+          && data.turntableYawDeg <= 360
+          && data.isActive is bool
+          && data.createdAt is timestamp
+          && data.updatedAt is timestamp
+          && data.updatedAt <= request.time;
         }
       }
 
+      // =======================================
+      // PERSONA STAGE DATA
+      // =======================================
+
       match /persona_stage_data/{stageId} {
         allow get, list: if isOwner(userId);
+
         allow create: if isOwner(userId)
-          && stageId in ['kid', 'teen', 'student', 'adult', 'business', 'veteran']
+          && stageId in [
+            'kid',
+            'teen',
+            'student',
+            'adult',
+            'business',
+            'veteran'
+          ]
           && isValidPersonaStageData(request.resource.data, stageId)
-          && request.resource.data.createdAt is timestamp
           && request.resource.data.createdAt <= request.time;
+
         allow update: if isOwner(userId)
-          && stageId in ['kid', 'teen', 'student', 'adult', 'business', 'veteran']
+          && stageId in [
+            'kid',
+            'teen',
+            'student',
+            'adult',
+            'business',
+            'veteran'
+          ]
           && isValidPersonaStageData(request.resource.data, stageId)
           && request.resource.data.userId == resource.data.userId
           && request.resource.data.stageId == resource.data.stageId
           && request.resource.data.createdAt == resource.data.createdAt
-          && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'stageLabel', 'focusGoal', 'primaryMetricLabel',
-            'primaryMetricValue', 'primaryMetricTarget',
-            'pinnedTopics', 'completedTaskIds', 'customNote',
-            'stageScoreOrXp', 'updatedAt'
-          ]);
+          && request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly([
+              'stageLabel',
+              'focusGoal',
+              'primaryMetricLabel',
+              'primaryMetricValue',
+              'primaryMetricTarget',
+              'pinnedTopics',
+              'completedTaskIds',
+              'customNote',
+              'stageScoreOrXp',
+              'updatedAt'
+            ]);
+
         allow delete: if isOwner(userId)
-          && stageId in ['kid', 'teen', 'student', 'adult', 'business', 'veteran'];
+          && stageId in [
+            'kid',
+            'teen',
+            'student',
+            'adult',
+            'business',
+            'veteran'
+          ];
 
         function isValidPersonaStageData(data, expectedStageId) {
           return data.keys().hasOnly([
-              'userId', 'stageId', 'stageLabel', 'focusGoal',
-              'primaryMetricLabel', 'primaryMetricValue', 'primaryMetricTarget',
-              'pinnedTopics', 'completedTaskIds', 'customNote',
-              'stageScoreOrXp', 'createdAt', 'updatedAt'
-            ])
-            && data.userId == request.auth.uid
-            && data.stageId == expectedStageId
-            && data.stageLabel in ['Kid', 'Teen', 'Student', 'Adult', 'Business', 'Veteran']
-            && data.focusGoal is string && data.focusGoal.size() <= 140
-            && data.primaryMetricLabel is string && data.primaryMetricLabel.size() <= 60
-            && data.primaryMetricValue is number && data.primaryMetricValue >= 0.0 && data.primaryMetricValue <= 10000000.0
-            && data.primaryMetricTarget is number && data.primaryMetricTarget >= 1.0 && data.primaryMetricTarget <= 10000000.0
-            && data.pinnedTopics is list && data.pinnedTopics.size() <= 12
-            && data.completedTaskIds is list && data.completedTaskIds.size() <= 20
-            && data.customNote is string && data.customNote.size() <= 400
-            && data.stageScoreOrXp is int && data.stageScoreOrXp >= 0 && data.stageScoreOrXp <= 1000000
-            && isValidTimestamp(data.updatedAt)
-            && data.updatedAt <= request.time;
+            'userId',
+            'stageId',
+            'stageLabel',
+            'focusGoal',
+            'primaryMetricLabel',
+            'primaryMetricValue',
+            'primaryMetricTarget',
+            'pinnedTopics',
+            'completedTaskIds',
+            'customNote',
+            'stageScoreOrXp',
+            'createdAt',
+            'updatedAt'
+          ])
+          && data.userId == request.auth.uid
+          && data.stageId == expectedStageId
+          && data.stageLabel in [
+            'Kid',
+            'Teen',
+            'Student',
+            'Adult',
+            'Business',
+            'Veteran'
+          ]
+          && data.focusGoal is string
+          && data.focusGoal.size() <= 140
+          && data.primaryMetricLabel is string
+          && data.primaryMetricLabel.size() <= 60
+          && data.primaryMetricValue is number
+          && data.primaryMetricValue >= 0
+          && data.primaryMetricValue <= 10000000
+          && data.primaryMetricTarget is number
+          && data.primaryMetricTarget >= 1
+          && data.primaryMetricTarget <= 10000000
+          && data.pinnedTopics is list
+          && data.pinnedTopics.size() <= 12
+          && data.completedTaskIds is list
+          && data.completedTaskIds.size() <= 20
+          && data.customNote is string
+          && data.customNote.size() <= 400
+          && data.stageScoreOrXp is int
+          && data.stageScoreOrXp >= 0
+          && data.stageScoreOrXp <= 1000000
+          && data.createdAt is timestamp
+          && data.updatedAt is timestamp
+          && data.updatedAt <= request.time;
         }
       }
+
+      // =======================================
+      // BLOCKED USERS
+      // =======================================
 
       match /blocked_users/{blockedUserId} {
         allow get, list: if isOwner(userId);
+
         allow create: if isOwner(userId)
           && isValidId(blockedUserId)
           && isValidBlockedUser(request.resource.data, blockedUserId)
-          && request.resource.data.createdAt is timestamp
           && request.resource.data.createdAt <= request.time;
-        allow update: if false; // Block records are immutable; unblock removes the document
-        allow delete: if isOwner(userId) && isValidId(blockedUserId);
 
-        function isValidBlockedUser(data, expectedBlockedId) {
+        allow update: if false;
+
+        allow delete: if isOwner(userId)
+          && isValidId(blockedUserId);
+
+        function isValidBlockedUser(data, expectedId) {
           return data.keys().hasAll([
-              'userId', 'blockedUserId', 'blockedDisplayName', 'reason', 'createdAt'
-            ])
-            && data.keys().hasOnly([
-              'userId', 'blockedUserId', 'blockedDisplayName', 'reason', 'createdAt'
-            ])
-            && data.userId == request.auth.uid
-            && data.blockedUserId == expectedBlockedId
-            && data.blockedUserId != request.auth.uid
-            && data.blockedDisplayName is string && data.blockedDisplayName.size() >= 1 && data.blockedDisplayName.size() <= 60
-            && data.reason is string && data.reason.size() >= 1 && data.reason.size() <= 100;
+            'userId',
+            'blockedUserId',
+            'blockedDisplayName',
+            'reason',
+            'createdAt'
+          ])
+          && data.keys().hasOnly([
+            'userId',
+            'blockedUserId',
+            'blockedDisplayName',
+            'reason',
+            'createdAt'
+          ])
+          && data.userId == request.auth.uid
+          && data.blockedUserId == expectedId
+          && data.blockedUserId != request.auth.uid
+          && data.blockedDisplayName is string
+          && data.blockedDisplayName.size() <= 60
+          && data.reason is string
+          && data.reason.size() <= 100
+          && data.createdAt is timestamp;
         }
       }
+
+      // =======================================
+      // FOLLOWING
+      // =======================================
 
       match /following/{followedUserId} {
         allow get, list: if isOwner(userId);
+
         allow create: if isOwner(userId)
           && isValidId(followedUserId)
           && isValidSocialFollow(request.resource.data, followedUserId)
-          && request.resource.data.createdAt is timestamp
           && request.resource.data.createdAt <= request.time;
-        allow update: if false; // Follow relationships are immutable; unfollow deletes the document
-        allow delete: if isOwner(userId) && isValidId(followedUserId);
 
-        function isValidSocialFollow(data, expectedFollowingId) {
+        allow update: if false;
+
+        allow delete: if isOwner(userId)
+          && isValidId(followedUserId);
+
+        function isValidSocialFollow(data, expectedId) {
           return data.keys().hasAll([
-              'followerId', 'followingId', 'followingDisplayName', 'followingRole', 'createdAt'
-            ])
-            && data.keys().hasOnly([
-              'followerId', 'followingId', 'followingDisplayName', 'followingRole', 'createdAt'
-            ])
-            && data.followerId == request.auth.uid
-            && data.followingId == expectedFollowingId
-            && data.followingId != request.auth.uid
-            && data.followingDisplayName is string && data.followingDisplayName.size() >= 1 && data.followingDisplayName.size() <= 60
-            && data.followingRole is string && data.followingRole.size() >= 1 && data.followingRole.size() <= 40;
+            'followerId',
+            'followingId',
+            'followingDisplayName',
+            'followingRole',
+            'createdAt'
+          ])
+          && data.keys().hasOnly([
+            'followerId',
+            'followingId',
+            'followingDisplayName',
+            'followingRole',
+            'createdAt'
+          ])
+          && data.followerId == request.auth.uid
+          && data.followingId == expectedId
+          && data.followingId != request.auth.uid
+          && data.followingDisplayName is string
+          && data.followingDisplayName.size() <= 60
+          && data.followingRole is string
+          && data.followingRole.size() <= 40
+          && data.createdAt is timestamp;
         }
       }
+
+      // =======================================
+      // POST LIKES
+      // =======================================
 
       match /post_likes/{postId} {
         allow get, list: if isOwner(userId);
+
         allow create: if isOwner(userId)
           && isValidId(postId)
           && isValidPostLike(request.resource.data, postId)
-          && request.resource.data.createdAt is timestamp
           && request.resource.data.createdAt <= request.time;
-        allow update: if false; // Likes are immutable; unlike deletes the document
-        allow delete: if isOwner(userId) && isValidId(postId);
 
-        function isValidPostLike(data, expectedPostId) {
+        allow update: if false;
+
+        allow delete: if isOwner(userId)
+          && isValidId(postId);
+
+        function isValidPostLike(data, expectedId) {
           return data.keys().hasAll([
-              'likerId', 'postId', 'postOwnerId', 'createdAt'
-            ])
-            && data.keys().hasOnly([
-              'likerId', 'postId', 'postOwnerId', 'createdAt'
-            ])
-            && data.likerId == request.auth.uid
-            && data.postId == expectedPostId
-            && isValidId(data.postOwnerId);
+            'likerId',
+            'postId',
+            'postOwnerId',
+            'createdAt'
+          ])
+          && data.keys().hasOnly([
+            'likerId',
+            'postId',
+            'postOwnerId',
+            'createdAt'
+          ])
+          && data.likerId == request.auth.uid
+          && data.postId == expectedId
+          && isValidId(data.postOwnerId)
+          && data.createdAt is timestamp;
         }
       }
     }
 
-    // --- Friend Requests Collection ---
+    // =========================================
+    // FRIEND REQUESTS
+    // =========================================
+
     match /friend_requests/{requestId} {
-      allow read: if isSignedIn() && (request.auth.uid == resource.data.fromUserId || request.auth.uid == resource.data.toUserId);
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.fromUserId && isValidRequest(request.resource.data);
-      allow update: if isSignedIn() && request.auth.uid == resource.data.toUserId && isValidRequest(request.resource.data);
-      allow delete: if isSignedIn() && (request.auth.uid == resource.data.fromUserId || request.auth.uid == resource.data.toUserId);
+      allow read: if isSignedIn()
+        && (
+          request.auth.uid == resource.data.fromUserId
+          || request.auth.uid == resource.data.toUserId
+        );
+
+      allow create: if isSignedIn()
+        && request.resource.data.fromUserId == request.auth.uid
+        && request.resource.data.fromUserId
+          != request.resource.data.toUserId
+        && isValidRequest(request.resource.data)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.createdAt <= request.time;
+
+      // Only the recipient can accept or decline.
+      // Sender, recipient and creation time cannot be rewritten.
+      allow update: if isSignedIn()
+        && request.auth.uid == resource.data.toUserId
+        && resource.data.status == 'pending'
+        && request.resource.data.fromUserId == resource.data.fromUserId
+        && request.resource.data.toUserId == resource.data.toUserId
+        && request.resource.data.fromName == resource.data.fromName
+        && request.resource.data.fromAvatarEmoji == resource.data.fromAvatarEmoji
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.status in ['accepted', 'declined']
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status']);
+
+      allow delete: if isSignedIn()
+        && (
+          request.auth.uid == resource.data.fromUserId
+          || request.auth.uid == resource.data.toUserId
+        );
 
       function isValidRequest(data) {
-        return (data.fromUserId == request.auth.uid || data.toUserId == request.auth.uid)
-          && data.fromUserId is string && data.fromName is string
-          && data.fromAvatarEmoji is string && data.toUserId is string
-          && data.status in ['pending', 'accepted', 'declined']
-          && isValidTimestamp(data.createdAt);
+        return data.keys().hasAll([
+          'fromUserId',
+          'fromName',
+          'fromAvatarEmoji',
+          'toUserId',
+          'status',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'fromUserId',
+          'fromName',
+          'fromAvatarEmoji',
+          'toUserId',
+          'status',
+          'createdAt'
+        ])
+        && data.fromUserId == request.auth.uid
+        && data.fromUserId is string
+        && data.fromName is string
+        && data.fromName.size() <= 60
+        && data.fromAvatarEmoji is string
+        && data.fromAvatarEmoji.size() <= 20
+        && data.toUserId is string
+        && data.toUserId.size() > 0
+        && data.status == 'pending'
+        && data.createdAt is timestamp;
       }
     }
 
-    // --- Moderation Flags Collection ---
+    // =========================================
+    // MODERATION FLAGS
+    // =========================================
+
     match /moderation_flags/{flagId} {
-      allow read: if false; // Only accessible via backend/admin console
-      allow create: if isSignedIn() && request.auth.uid == request.resource.data.reporterUserId && isValidFlag(request.resource.data);
+      allow read: if false;
+
+      allow create: if isSignedIn()
+        && request.resource.data.reporterUserId == request.auth.uid
+        && isValidFlag(request.resource.data)
+        && request.resource.data.createdAt <= request.time;
+
       allow update, delete: if false;
 
       function isValidFlag(data) {
-        return data.reporterUserId == request.auth.uid
-          && data.targetId is string && data.targetId.size() > 0
-          && data.targetType in ['post', 'profile', 'comment']
-          && data.reason in ['Spam', 'Harassment', 'Inappropriate', 'Violence', 'Other']
-          && data.detail is string && data.detail.size() <= 500
-          && data.status == 'pending'
-          && isValidTimestamp(data.createdAt);
+        return data.keys().hasAll([
+          'reporterUserId',
+          'targetId',
+          'targetType',
+          'reason',
+          'detail',
+          'status',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'reporterUserId',
+          'targetId',
+          'targetType',
+          'reason',
+          'detail',
+          'status',
+          'createdAt'
+        ])
+        && data.reporterUserId == request.auth.uid
+        && data.targetId is string
+        && data.targetId.size() > 0
+        && data.targetType in ['post', 'profile', 'comment']
+        && data.reason in [
+          'Spam',
+          'Harassment',
+          'Inappropriate',
+          'Violence',
+          'Other'
+        ]
+        && data.detail is string
+        && data.detail.size() <= 500
+        && data.status == 'pending'
+        && data.createdAt is timestamp;
       }
     }
 
-    // --- Video Reel Comments Collection (VideoReelsComponent) ---
+    // =========================================
+    // VIDEO REEL COMMENTS
+    // =========================================
+
     match /video_reel_comments/{commentId} {
       allow read: if isSignedIn();
+
       allow create: if isSignedIn()
         && request.resource.data.userId == request.auth.uid
-        && isValidVideoReelComment(request.resource.data);
+        && isValidVideoReelComment(request.resource.data)
+        && request.resource.data.createdAt <= request.time;
+
+      // Only the comment author can edit the text.
       allow update: if isSignedIn()
+        && resource.data.userId == request.auth.uid
         && request.resource.data.userId == resource.data.userId
+        && request.resource.data.reelId == resource.data.reelId
+        && request.resource.data.videoId == resource.data.videoId
+        && request.resource.data.createdAt == resource.data.createdAt
+        && request.resource.data.authorName == resource.data.authorName
+        && request.resource.data.authorRole == resource.data.authorRole
+        && request.resource.data.likesCount == resource.data.likesCount
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['text'])
         && isValidVideoReelComment(request.resource.data);
-      allow delete: if isSignedIn() && resource.data.userId == request.auth.uid;
+
+      allow delete: if isSignedIn()
+        && resource.data.userId == request.auth.uid;
 
       function isValidVideoReelComment(data) {
-        return data.reelId is string && data.reelId.size() > 0 && data.reelId.size() <= 100
-          && data.videoId is string && data.videoId.size() > 0 && data.videoId.size() <= 40
-          && data.userId is string && data.userId.size() > 0
-          && data.authorName is string && data.authorName.size() <= 60
-          && data.authorRole is string && data.authorRole.size() <= 40
-          && data.text is string && data.text.size() > 0 && data.text.size() <= 600
-          && data.likesCount is int && data.likesCount >= 0
-          && isValidTimestamp(data.createdAt);
+        return data.keys().hasAll([
+          'reelId',
+          'videoId',
+          'userId',
+          'authorName',
+          'authorRole',
+          'text',
+          'likesCount',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'reelId',
+          'videoId',
+          'userId',
+          'authorName',
+          'authorRole',
+          'text',
+          'likesCount',
+          'createdAt'
+        ])
+        && data.reelId is string
+        && data.reelId.size() > 0
+        && data.reelId.size() <= 100
+        && data.videoId is string
+        && data.videoId.size() > 0
+        && data.videoId.size() <= 40
+        && data.userId == request.auth.uid
+        && data.authorName is string
+        && data.authorName.size() <= 60
+        && data.authorRole is string
+        && data.authorRole.size() <= 40
+        && data.text is string
+        && data.text.size() > 0
+        && data.text.size() <= 600
+        && data.likesCount is int
+        && data.likesCount >= 0
+        && data.createdAt is timestamp;
       }
     }
 
-    // --- Social Post Comments Collection ---
+    // =========================================
+    // SOCIAL POST COMMENTS
+    // =========================================
+
     match /post_comments/{commentId} {
-      allow get: if isSignedIn() && isValidId(commentId);
-      allow list: if isSignedIn();
+      allow get, list: if isSignedIn();
+
       allow create: if isSignedIn()
         && isValidId(commentId)
         && request.resource.data.authorId == request.auth.uid
         && isValidPostComment(request.resource.data)
-        && request.resource.data.createdAt is timestamp
         && request.resource.data.createdAt <= request.time;
+
       allow update: if isSignedIn()
         && isValidId(commentId)
         && resource.data.authorId == request.auth.uid
@@ -379,29 +940,55 @@ service cloud.firestore {
         && request.resource.data.authorId == resource.data.authorId
         && request.resource.data.postId == resource.data.postId
         && request.resource.data.postOwnerId == resource.data.postOwnerId
+        && request.resource.data.authorName == resource.data.authorName
+        && request.resource.data.authorRole == resource.data.authorRole
         && request.resource.data.createdAt == resource.data.createdAt
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['text']);
+        && request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['text']);
+
       allow delete: if isSignedIn()
         && isValidId(commentId)
         && resource.data.authorId == request.auth.uid;
 
       function isValidPostComment(data) {
         return data.keys().hasAll([
-            'postId', 'postOwnerId', 'authorId', 'authorName', 'authorRole', 'text', 'createdAt'
-          ])
-          && data.keys().hasOnly([
-            'postId', 'postOwnerId', 'authorId', 'authorName', 'authorRole', 'text', 'createdAt'
-          ])
-          && isValidId(data.postId)
-          && isValidId(data.postOwnerId)
-          && data.authorId == request.auth.uid
-          && data.authorName is string && data.authorName.size() >= 1 && data.authorName.size() <= 60
-          && data.authorRole is string && data.authorRole.size() >= 1 && data.authorRole.size() <= 40
-          && data.text is string && data.text.size() >= 1 && data.text.size() <= 600;
+          'postId',
+          'postOwnerId',
+          'authorId',
+          'authorName',
+          'authorRole',
+          'text',
+          'createdAt'
+        ])
+        && data.keys().hasOnly([
+          'postId',
+          'postOwnerId',
+          'authorId',
+          'authorName',
+          'authorRole',
+          'text',
+          'createdAt'
+        ])
+        && isValidId(data.postId)
+        && isValidId(data.postOwnerId)
+        && data.authorId == request.auth.uid
+        && data.authorName is string
+        && data.authorName.size() >= 1
+        && data.authorName.size() <= 60
+        && data.authorRole is string
+        && data.authorRole.size() >= 1
+        && data.authorRole.size() <= 40
+        && data.text is string
+        && data.text.size() >= 1
+        && data.text.size() <= 600
+        && data.createdAt is timestamp;
       }
     }
 
-    // Default deny for any unmatched paths
+    // =========================================
+    // DEFAULT DENY
+    // =========================================
+
     match /{document=**} {
       allow read, write: if false;
     }

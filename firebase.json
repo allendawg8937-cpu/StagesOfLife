@@ -1,7 +1,8 @@
+
 {
   "firestore": [
     {
-      "database": "ai-studio-android-wonderin-390c0311-ca7c-4540-8d89-87f9d255cf29",
+      "database": "demo-database",
       "rules": "firestore.rules"
     }
   ],

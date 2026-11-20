@@ -6,23 +6,42 @@ import com.google.firebase.FirebaseApp
 import com.google.firebase.FirebaseOptions
 
 /**
- * Provides a test-only Firebase configuration for Robolectric.
+ * Provides an initialized default Firebase app for Robolectric tests.
  */
 class TestFirebaseApplication : Application() {
 
     override fun onCreate() {
         super.onCreate()
 
-        if (FirebaseApp.getApps(this).isEmpty()) {
+        // Check specifically for the default Firebase app.
+        val defaultApp = runCatching {
+            FirebaseApp.getInstance(FirebaseApp.DEFAULT_APP_NAME)
+        }.getOrNull()
+
+        if (defaultApp == null) {
             val options = FirebaseOptions.Builder()
                 .setApplicationId(
                     "1:1234567890:android:abcdef0123456789"
                 )
                 .setApiKey("robolectric-test-api-key")
                 .setProjectId("stages-of-life-robolectric-test")
+                .setGcmSenderId("1234567890")
                 .build()
 
-            FirebaseApp.initializeApp(this, options)
+            FirebaseApp.initializeApp(
+                this,
+                options,
+                FirebaseApp.DEFAULT_APP_NAME
+            )
+        }
+
+        // Verify Firebase is ready before the activity starts.
+        checkNotNull(
+            runCatching {
+                FirebaseApp.getInstance(FirebaseApp.DEFAULT_APP_NAME)
+            }.getOrNull()
+        ) {
+            "Failed to initialize Firebase for Robolectric tests."
         }
     }
 }

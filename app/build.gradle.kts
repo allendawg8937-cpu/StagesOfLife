@@ -1,6 +1,7 @@
 
 import com.google.gms.googleservices.GoogleServicesPlugin.MissingGoogleServicesStrategy
 import java.time.Duration
+import org.gradle.api.tasks.testing.Test
 
 plugins {
     alias(libs.plugins.android.application)
@@ -37,41 +38,35 @@ android {
                 ?: "${rootDir}/my-upload-key.jks"
 
             storeFile = file(keystorePath)
-
-            storePassword = System.getenv("STORE_PASSWORD")
-                ?: ""
+            storePassword =
+                System.getenv("STORE_PASSWORD") ?: ""
 
             keyAlias = "upload"
 
-            keyPassword = System.getenv("KEY_PASSWORD")
-                ?: ""
-        }
-
-        create("debugConfig") {
-            storeFile = file("${rootDir}/debug.keystore")
-            storePassword = "android"
-            keyAlias = "androiddebugkey"
-            keyPassword = "android"
+            keyPassword =
+                System.getenv("KEY_PASSWORD") ?: ""
         }
     }
 
     buildTypes {
+        debug {
+            // Use Android's automatically generated debug keystore.
+            // Do not reference a missing debug.keystore file.
+        }
+
         release {
             isCrunchPngs = true
             isMinifyEnabled = true
 
             proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
+                getDefaultProguardFile(
+                    "proguard-android-optimize.txt"
+                ),
                 "proguard-rules.pro"
             )
 
             signingConfig =
                 signingConfigs.getByName("release")
-        }
-
-        debug {
-            signingConfig =
-                signingConfigs.getByName("debugConfig")
         }
     }
 
@@ -102,7 +97,11 @@ tasks.withType<Test> {
     timeout.set(Duration.ofMinutes(2))
 
     testLogging {
-        events("passed", "failed", "skipped")
+        events(
+            "passed",
+            "failed",
+            "skipped"
+        )
     }
 }
 
